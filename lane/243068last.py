@@ -81,13 +81,18 @@ class Car_speed(Car_line):#車線境界線（白い破線）を通過する時�
         #3. 各ROIの中で、(明るさの) 最大値Vmax を持つものをRmax とし、平均値Vavg 以上のROI を対辺候補とする。
         Rmax = max(roi_box)
         Vavg = np.mean(roi_box)
-
+        Rmax_index = roi_box.index(Rmax)
+        
         opposite_candidate = []
         for i in range(separate):
              if roi_box[i] >= Vavg:
                 opposite_candidate.append((i,roi_box[i]))
         #4. 明るさ順にソートした対辺候補のリストから順にROIを取り出し、(a) その位置が Rmax±(0.55∼0.71)×画像幅 の範囲内にあるか？の条件を満足していれば、それをR2 と決定し次フレームへ。(d=2)
         opposite_candidate.sort(reverse=True)
+        R2 = Rmax
+        min_range = 0.55*separate
+        max_range = 0.71*separate
+        opposite_candidate.sort(key=lambda x: x[1], reverse=True)#明るさを基準にしたソート。明るさって基準を指定しないとだめだった
         for x in opposite_candidate:
             if abs(x)>=0.55 and abs(x)<=0.71:
                 R2 = x
