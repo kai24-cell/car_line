@@ -86,44 +86,37 @@ class Car_speed(Car_line):#車線境界線（白い破線）を通過する時�
         opposite_candidate = []
         for i in range(separate):
              if roi_box[i] >= Vavg:
-                opposite_candidate.append((i,roi_box[i]))
+                opposite_candidate.append((i,roi_box[i]))#iは後で距離に使う予定。
         #4. 明るさ順にソートした対辺候補のリストから順にROIを取り出し、(a) その位置が Rmax±(0.55∼0.71)×画像幅 の範囲内にあるか？の条件を満足していれば、それをR2 と決定し次フレームへ。(d=2)
-        opposite_candidate.sort(reverse=True)
+        #opposite_candidate.sort(reverse=True)こう書くとエラー出た
         R2 = Rmax
         min_range = 0.55*separate
         max_range = 0.71*separate
-        opposite_candidate.sort(key=lambda x: x[1], reverse=True)#明るさを基準にしたソート。明るさって基準を指定しないとだめだった
+        one_found =1
+        two_found =2
+        place_roi =0#位置
+        light_roi =1#明るさ
+        d=one_found
+        opposite_candidate.sort(key=lambda x: x[light_roi], reverse=True)#明るさを基準にしたソート。明るさって基準を指定しないとだめだった
         for x in opposite_candidate:
-            if abs(x)>=0.55 and abs(x)<=0.71:
+            distance = abs(x[place_roi]-Rmax_index)
+            if distance>=min_range and distance<=max_range:
                 R2 = x
                 break
             else:
-                R2 = Rmax
+                R2 = roi_box.index(Rmax)#場所格納しとく
+        #5. 満足する候補がなければ、白線候補はRmax のみとし、白線検出数d=1とする。
+        for place,light in (opposite_candidate):
+            distance=abs(place-R2)
+            if min_range<=distance and distance<=max_range:
+                R2=place
+                d=two_found
+                break
+        #6. フレームごとに求めた白線検出数の時系列値より、映像を撮影している走行車両の時速(km/h)を求める。なお、白線部分(8m) と途切れている部分(12m) のセット(20m) を3セット程度まとめて計算すれば、精度を高くできる。
 
+        
 
-        fg=Car_speed.figure_box
-        pre_line = None
-        current_line = 0
-        while True:
-            (ret, img_src) = cap.read()	# retは画像を取得成功フラグ
-            if ret:
-                line,half_height = Line_make.maker(img_src)
-                fg = Car_line.figure_box
-                if line is not None:
-                    found_empty_line =Car_line.deal_add_color(line,half_height,img_src)
-                if found_empty_line:
-                    if pre_line is not None:
-                        line_defferent = current_line - pre_line
-                        time_sec = line_defferent / frame_rate
-                        speed = fg['line_width'] / time_sec
-                        speed_kmh = speed * 3.6
-                    #print(f"Speed: {speed_kmh:.2f} km/h")
-                        cv2.putText(img_src, f"Speed: {speed_kmh:.2f} km/h", (10, 50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                        pre_line = None  # リセット
-                    else:
-                        pre_line = current_line
-
-            current_line += 1
+           
             cv2.imshow('src', img_src)
             if cv2.waitKey(30) == 27:
                 break
