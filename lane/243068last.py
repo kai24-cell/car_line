@@ -5,9 +5,13 @@ class Main:
     @staticmethod
     def out_put():#実行用関数
         cv2.namedWindow('src')
-        get_image = cv2.VideoCapture('highway.mov') # Open movie   
-        #Car_line.edge_chacker(get_image)
-        Car_speed.speed_checker(get_image)
+        get_image = cv2.VideoCapture('highway.mov') # Open movie
+        if not get_image.isOpened():
+            print("画像を読み込めませんでした")
+            exit()
+
+        #Car_line.edge_chacker(get_image)こっちは車線検出
+        Car_speed.speed_checker(get_image)#こっちは速度検出
 
 class Car_line:#車線の検出をする関数  
     figure_box={#変数一覧
@@ -61,70 +65,98 @@ class Car_speed(Car_line):#車線境界線（白い破線）を通過する時�
     @staticmethod
     def speed_checker(cap:cv2.VideoCapture):
         #  1.映像から1枚フレーム(画像)を切り出す
-        frame_rate = cap.get(cv2.CAP_PROP_FPS)      
+        frame_rate = cap.get(cv2.CAP_PROP_FPS)
+        frame_place =[]#後でループ用に使う
+        rope =0
+        chatch_line =1#1なら車線を踏んでない
+        fg=Car_line.figure_box
+        speed_kmh = None
+        while True: 
         #2. 画像最下行を等分しROI :Region of Interest (注目領域) とし、各 ROI 内の画素の平均値 V を求める。
-        (ret, img_src) = cap.read()	# retは画像を取得成功フラグ
-        height,width = img_src.shape[:2]#高さを取得
-        half_height= height//2#画像最下行を等分
-        ROI = img_src[half_height:, :]#下半分を検出するようにする
-        gray_scale = cv2.cvtColor(ROI,cv2.COLOR_BGR2GRAY)
+            (ret, img_src) = cap.read()	# retは画像を取得成功フラグ
+            if not ret:
+                print("画像を読み込めなかった")
+                break
+            height,width = img_src.shape[:2]#高さを取得
+            half_height= height//2#画像最下行を等分
+            ROI = img_src[half_height:, :]#下半分を検出するようにする
+            gray_scale = cv2.cvtColor(ROI,cv2.COLOR_BGR2GRAY)
 
-        separate = 20#20等分にする
-        trans_width = width//separate
-        roi_box=[]
+            separate = 20#20等分にする
+            trans_width = width//separate
+            roi_box=[]
 
-        for i in range(separate):
-            ROI_notice = gray_scale[:, i * trans_width:(i + 1) * trans_width]
-            V = np.mean(ROI_notice)
-            roi_box.append(V)
+            for i in range(separate):
+                ROI_notice = gray_scale[:, i * trans_width:(i + 1) * trans_width]
+                V = np.mean(ROI_notice)
+                roi_box.append(V)
            
         #3. 各ROIの中で、(明るさの) 最大値Vmax を持つものをRmax とし、平均値Vavg 以上のROI を対辺候補とする。
-        Rmax = max(roi_box)
-        Vavg = np.mean(roi_box)
-        Rmax_index = roi_box.index(Rmax)
+            Rmax = max(roi_box)
+            Vavg = np.mean(roi_box)
+            Rmax_index = roi_box.index(Rmax)
         
-        opposite_candidate = []
-        for i in range(separate):
-             if roi_box[i] >= Vavg:
-                opposite_candidate.append((i,roi_box[i]))#iは後で距離に使う予定。
+            opposite_candidate = []
+            for i in range(separate):
+                if roi_box[i] >= Vavg:
+                    opposite_candidate.append((i,roi_box[i]))#iは後で距離に使う予定。
         #4. 明るさ順にソートした対辺候補のリストから順にROIを取り出し、(a) その位置が Rmax±(0.55∼0.71)×画像幅 の範囲内にあるか？の条件を満足していれば、それをR2 と決定し次フレームへ。(d=2)
         #opposite_candidate.sort(reverse=True)こう書くとエラー出た
-        R2 = Rmax
-        min_range = 0.55*separate
-        max_range = 0.71*separate
-        one_found =1
-        two_found =2
-        place_roi =0#位置
-        light_roi =1#明るさ
-        d=one_found
-        opposite_candidate.sort(key=lambda x: x[light_roi], reverse=True)#明るさを基準にしたソート。明るさって基準を指定しないとだめだった
-        for x in opposite_candidate:
-            distance = abs(x[place_roi]-Rmax_index)
-            if distance>=min_range and distance<=max_range:
-                R2 = x
-                break
-            else:
-                R2 = roi_box.index(Rmax)#場所格納しとく
+            R2 = Rmax
+            min_range = 0.55*separate
+            max_range = 0.71*separate
+            one_found =1
+            two_found =2
+            place_roi =0#位置
+            light_roi =1#明るさ
+            d=one_found
+            opposite_candidate.sort(key=lambda x: x[light_roi], reverse=True)#明るさを基準にしたソート。明るさって基準を指定しないとだめだった
+            for x in opposite_candidate:
+                distance = abs(x[place_roi]-Rmax_index)
+                if distance>=min_range and distance<=max_range:
+                    R2 = x[place_roi]
+                    break
+                else:
+                    R2 = roi_box.index(Rmax)#場所格納しとく
         #5. 満足する候補がなければ、白線候補はRmax のみとし、白線検出数d=1とする。
-        for place,light in (opposite_candidate):
-            distance=abs(place-R2)
-            if min_range<=distance and distance<=max_range:
-                R2=place
-                d=two_found
-                break
+            for place,light in opposite_candidate:
+                distance=abs(place-R2)
+                if min_range<=distance and distance<=max_range:
+                    R2=place
+                    d=two_found
+                    break
         #6. フレームごとに求めた白線検出数の時系列値より、映像を撮影している走行車両の時速(km/h)を求める。なお、白線部分(8m) と途切れている部分(12m) のセット(20m) を3セット程度まとめて計算すれば、精度を高くできる。
-        frame_place =[]
-        if d==2:
-            frame_place.append()
         
-
-           
+            if d==2 and chatch_line !=2:
+                frame_place.append(rope)
+            chatch_line =d
+            left_up_side =(10,50)
+            if len(frame_place) >= 3:
+                time_distance_frame = frame_place[2]-frame_place[0]#３つ車線取って３つめと１つめの時間（フレーム）の差
+                time_sec = time_distance_frame/frame_rate#秒変換
+                short_time=0.5
+                if time_sec < short_time:
+                    print("誤検出")
+                    frame_place.clear()
+                    continue
+                three_set_distance =20*3
+                speed_kmh = 3.6*three_set_distance/time_sec#3.6はm/sをkm/hにするため
+                frame_place.clear()
+            if speed_kmh is not None:
+                cv2.putText(img_src, f"speed: {speed_kmh:.2f} km/h", left_up_side,
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, fg["red_color"], fg["two_px"])
             cv2.imshow('src', img_src)
+            next_frame =1
+            rope+=next_frame
             if cv2.waitKey(30) == 27:
                 break
 
         cap.release()
         cv2.destroyAllWindows()
+    '''
+    速度検出の苦労したところ:授業で提示された意図を理解するまでに時間がかかった。
+    工夫したところ:エラーが出やすかったからエラーチェックをなるべく入れた
+    '''
 
 class Line_make:#線を引くまでの部分を再利用できるようにした
     @staticmethod
