@@ -10,7 +10,7 @@ class Main:
             print("画像を読み込めませんでした")
             exit()
 
-        #Car_line.edge_chacker(get_image)こっちは車線検出
+        #Car_line.edge_chacker(get_image)#こっちは車線検出
         Car_speed.speed_checker(get_image)#こっちは速度検出
 
 class Car_line:#車線の検出をする関数  
@@ -43,6 +43,7 @@ class Car_line:#車線の検出をする関数
                 break        
         cap.release()
         cv2.destroyAllWindows()
+    '''
     @staticmethod
     def deal_add_color(line,half_height,img_src):
         fg=Car_line.figure_box
@@ -57,9 +58,48 @@ class Car_line:#車線の検出をする関数
                 continue  # 横線に近いからいらない
             cv2.line(img_src, (x1, y1 + half_height), (x2, y2 + half_height), fg['red_color'], fg['two_px'])#縦線に近かったら赤色で描写
         return found_empty_line
+    
+    @staticmethod
+    def filter_list(lines):
+        fg=Car_line.figure_box
+        filterd=[]
+        for line in line:
+            x1, y1, x2, y2 = line[0]#検出した車線の始点と終点の座標       
+            if x2 - x1 == fg['side_line']:  # 縦線
+                slope = float('inf')
+            else:
+                slope = (y2 - y1) / (x2 - x1)#斜めってる車線対策
+            if abs(slope) < fg['small_line']:
+                filterd.append((x1,y1,x2,y2))
+        return filterd
     '''
-    車線検出の苦労したところ:メソッドとプロパティを調べるのに時間がかかった。
+    @staticmethod
+    def filter_list(lines, small_line_thresh=0.5, side_line_thresh=0):
+        filtered = []
+        for line in lines:
+            x1, y1, x2, y2 = line[0]#検出した車線の始点と終点の座標 
+            if x2 - x1 == side_line_thresh:# 縦線
+                slope = float('inf')
+            else:
+                slope = (y2 - y1) / (x2 - x1)#斜めってる車線対策
+            if abs(slope) >= small_line_thresh:
+                filtered.append((x1, y1, x2, y2))
+        return filtered
+
+    @staticmethod
+    def deal_add_color(line,half_height,img_src):
+        fg=Car_line.figure_box
+        filtered_lines = Car_line.filter_list(line, fg['small_line'], fg['side_line'])
+        for x1, y1, x2, y2 in filtered_lines:
+            cv2.line(img_src, (x1, y1 + half_height), (x2, y2 + half_height),
+                 fg['red_color'], fg['two_px'])
+        return bool(filtered_lines)
+
+    '''
+    車線検出の苦労したところ:メソッドとプロパティを調べるのに時間がかかった。CIテストのやり方が全然わからなくて時間かかった。
+    まずコメントアウトしても勝手にMainが呼び出されてimshowを実行する挙動になったのが厄介だった。
     工夫したところ:マジックナンバーをなるべく避けて可読性を上げた。もしかしたら再利用できるかもしれないから継承・オーバーライドするためにクラスで残しといた
+    あと課題とは関係ないけどCarlineクラスをCIテストにかけてみた。そしたらちゃんとテストできてることがわかった
     '''
 class Car_speed(Car_line):#車線境界線（白い破線）を通過する時間間隔とその長さ1を利用して車速を求める
     @staticmethod
@@ -174,3 +214,5 @@ class Line_make:#線を引くまでの部分を再利用できるようにした
         line = cv2.HoughLinesP(edge, fg['one_px'], np.pi/180, threshold=50, minLineLength=50, maxLineGap=10)#直線を引く
         return line,half_height
 Main.out_put()#実行
+#if __name__ == "__main__":
+ #   Main.out_put()
